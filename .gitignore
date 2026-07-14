@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+
+# Keep the small daily parquet cache and the generated report PNGs committed so
+# the repo runs offline out of the box. Ignore large intraday pulls instead.
+data/cache/*_1m.parquet
+data/cache/*_5m.parquet
+data/cache/*_15m.parquet
