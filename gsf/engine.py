@@ -55,6 +55,8 @@ class BacktestResult:
     pos: pd.Series
     price: pd.Series  # price series used for buy-and-hold / marking
     meta: dict
+    gross_equity: pd.Series = None  # equity with zero transaction cost
+    cost_returns: pd.Series = None  # per-bar cost drag (>= 0), windowed
 
 
 def run(
@@ -117,6 +119,12 @@ def run(
     equity = (1.0 + net_w).cumprod()
     equity.index = ts.loc[win]
 
+    gross_w = gross_ret.loc[win]
+    gross_equity = (1.0 + gross_w).cumprod()
+    gross_equity.index = ts.loc[win]
+    cost_w = cost_ret.loc[win].copy()
+    cost_w.index = ts.loc[win]
+
     price_w = mark.loc[win]
     bh_ret = price_w.pct_change().fillna(0.0)
     bh_equity = (1.0 + bh_ret).cumprod()
@@ -135,7 +143,10 @@ def run(
         "end": str(ts.loc[win].iloc[-1].date()) if len(win) else None,
         "bars": int(len(win)),
     }
-    return BacktestResult(equity, bh_equity, returns, trades, pos.loc[win], price_w, meta)
+    return BacktestResult(
+        equity, bh_equity, returns, trades, pos.loc[win], price_w, meta,
+        gross_equity=gross_equity, cost_returns=cost_w,
+    )
 
 
 def _extract_trades(ts, pos, txn_price, cost, window, execution) -> pd.DataFrame:

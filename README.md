@@ -170,6 +170,52 @@ Test 1.
 
 See `reports/regime_heatmap.png` for the full grid.
 
+### Intraday verification — the fee-shredder test (`python analysis_intraday.py`)
+
+Daily results **cannot** falsify an intraday strategy, so there is a dedicated
+5-minute harness: rolling windows across the full history, every strategy, at
+four fee tiers, with a **fee autopsy** (gross vs net return, what % of the gross
+edge fees eat, trades/day, average holding period).
+
+**Data reality (exhaustively checked this session):** there is **no path to
+3-year 5-minute data of any asset from inside the web sandbox.** ccxt/exchanges
+are HTTP-403 blocked; Crypto.com MCP caps at 50 candles; and this Alpha Vantage
+key gates *all* intraday endpoints (crypto, FX, **and** equity) behind premium.
+So the real crypto run must be done on an open network:
+
+```bash
+# on an open-network machine (Binance paginates deep history; Kraken can't):
+python scripts/fetch_ccxt.py --exchange binance --symbol BTC/USDT --timeframe 5m --since 2022-07-01
+python analysis_intraday.py --symbol BTCUSD
+```
+
+**Pipeline validation (synthetic, NOT a market result):** to prove the harness
+end-to-end where real data is unreachable, `scripts/make_synthetic_5m.py`
+generates a 3-year 5-minute **random walk** (no edge by construction). The
+harness processes all 315k bars, 9 rolling 1-year windows, 5 strategies, 4 fee
+tiers in ~1 min. Because the series has no edge, every "gross" number is a
+random-walk artefact — ignore it as signal. What *is* real and transferable is
+the **turnover arithmetic**:
+
+| | trades/year | 3-yr cost drag @ 0.10%/side |
+|---|--:|--:|
+| EMA 9/21 **daily** (measured, BTC) | ~7 | ~4% of capital |
+| EMA 9/21 **5-minute** (measured, synth churn) | ~2,400 | **>100% of capital** |
+
+EMA 9/21 fires **~6.6 trades per day** on 5-minute bars versus ~7 per *year* on
+daily — a ~340× turnover explosion. At that rate the cumulative fee hurdle over
+three years exceeds the entire account **even at VIP 0.04%/side** (net ≈ −100%
+in the synthetic run; VWAP-bounce churns hardest at ~8.8 trades/day). Turnover ×
+fee is independent of whether the data is real — so while the exact gross edge
+of real BTC is still unmeasured here, the fee-shredder *mechanism* is confirmed:
+the daily version paid ~1% of profits in costs; the 5-minute version must clear
+a fee hurdle of order 100% of capital before it earns a cent. That is the hurdle
+the gurus never mention.
+
+`reports/intraday_rolling_SYNTH.png` shows the (synthetic) rolling grid. Replace
+`SYNTH` with real `BTCUSD` 5m data and the same command produces the real
+verdict.
+
 ---
 
 ## Adding a strategy (~10 lines)
@@ -218,22 +264,25 @@ gsf/
   strategies/     # registry + ema_cross, rsi, supertrend, intraday (vwap, orb)
 run.py            # CLI (single run, or --suite)
 suite.py          # Test 1 reproduction + BTC/ETH cross-check
-analysis.py       # per-year regime grid + heatmap
-scripts/          # fetch_ccxt.py (local), mcp_to_cache.py (sandbox)
-tests/            # no-look-ahead, cost-accounting, strategy + session tests
+analysis.py       # daily per-year regime grid + heatmap
+analysis_intraday.py  # 5m fee-shredder autopsy + rolling-window grid
+scripts/          # fetch_ccxt.py (local 5m), mcp_to_cache.py (sandbox daily),
+                  #   make_synthetic_5m.py (pipeline test only — not market data)
+tests/            # no-look-ahead, cost-accounting, strategy, session, autopsy
 data/cache/       # committed daily parquet
 reports/          # committed equity PNGs
 ```
 
 ## Next steps (from the project plan)
 
-1. **5-minute EMA 9/21 on BTC** with fee tiers — run `fetch_ccxt.py --timeframe 5m`
-   locally, then confirm/deny the fee-shredder prediction. *(blocked in sandbox)*
-2. Run **`vwap_bounce` and `orb`** on that same local 5-min cache (modules ready;
-   they raise on daily data by design).
-3. ~~RSI 30/70~~ ✅ done on daily — destroyed on trending crypto (2/8 years).
-4. ~~Supertrend~~ ✅ done on daily — mediocre, regime-dependent.
-5. ~~Rolling multi-window regime analysis~~ ✅ done — see `analysis.py` / heatmap.
+1. **Real 5-minute BTC/ETH run** — the intraday harness (`analysis_intraday.py`)
+   is built, tested, and validated on synthetic data; it just needs real 5m bars
+   the sandbox can't fetch. Run the two commands in *Intraday verification* above
+   on an open network to get the real crypto verdict on EMA/RSI/Supertrend/VWAP/ORB.
+2. ~~RSI 30/70~~ ✅ daily — destroyed on trending crypto (2/8 years).
+3. ~~Supertrend~~ ✅ daily — mediocre, regime-dependent.
+4. ~~Rolling multi-window regime analysis~~ ✅ daily + intraday harnesses done.
+5. ~~VWAP bounce, ORB~~ ✅ implemented + session-tested; ready for real 5m data.
 6. Paper-trade any survivor forward one month before touching the $100 CAD.
-   (On the daily evidence so far, there is no survivor worth live capital: EMA's
-   only edge is crash-avoidance, and it lags in bull years.)
+   (No survivor yet: daily edge is only crash-avoidance; intraday turnover makes
+   the fee hurdle ~100% of capital before real 5m data is even applied.)

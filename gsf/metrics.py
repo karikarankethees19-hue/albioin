@@ -60,6 +60,63 @@ def summarize(res: BacktestResult, label: str = "") -> dict:
     }
 
 
+def autopsy(res: BacktestResult, label: str = "") -> dict:
+    """Fee-shredder autopsy: how much of the gross edge do costs eat, and how
+    hard does the strategy churn? This is the intraday-specific diagnosis.
+    """
+    eq, geq = res.equity, res.gross_equity
+    net_total = float(eq.iloc[-1] - 1.0) if len(eq) else 0.0
+    gross_total = float(geq.iloc[-1] - 1.0) if (geq is not None and len(geq)) else net_total
+
+    # Cost drag in equity terms = gross final - net final (both start at 1.0).
+    cost_drag = float((geq.iloc[-1] - eq.iloc[-1])) if geq is not None and len(geq) else 0.0
+    # Share of the *gross* profit surrendered to fees (only meaningful if gross>0).
+    if gross_total > 1e-9:
+        cost_share_of_gross = cost_drag / (geq.iloc[-1] - 1.0)
+    else:
+        cost_share_of_gross = float("nan")
+
+    n_trades = int(len(res.trades))
+    span_days = max((eq.index[-1] - eq.index[0]).days, 1) if len(eq) else 1
+    trades_per_day = n_trades / span_days
+
+    # Average holding period from trade entry/exit timestamps.
+    if n_trades:
+        holds = (res.trades["exit_time"] - res.trades["entry_time"]).dt.total_seconds()
+        avg_hold_hours = float(holds.mean() / 3600.0)
+    else:
+        avg_hold_hours = float("nan")
+
+    return {
+        "label": label,
+        "gross_return": gross_total,
+        "net_return": net_total,
+        "cost_drag": cost_drag,
+        "cost_share_of_gross": cost_share_of_gross,
+        "trades": n_trades,
+        "trades_per_day": trades_per_day,
+        "avg_hold_hours": avg_hold_hours,
+    }
+
+
+def format_autopsy(rows: list[dict]) -> str:
+    head = (
+        f"{'strategy / tier':<40}  {'gross':>8}  {'net':>8}  "
+        f"{'fees ate':>9}  {'trades':>7}  {'trd/day':>8}  {'hold(h)':>8}"
+    )
+    lines = [head, "-" * len(head)]
+    for r in rows:
+        share = r["cost_share_of_gross"]
+        share_s = "n/a" if share != share else f"{share * 100:.0f}%"  # nan check
+        hold = r["avg_hold_hours"]
+        hold_s = "n/a" if hold != hold else f"{hold:.1f}"
+        lines.append(
+            f"{r['label']:<40}  {r['gross_return']*100:>+7.1f}%  {r['net_return']*100:>+7.1f}%  "
+            f"{share_s:>9}  {r['trades']:>7}  {r['trades_per_day']:>8.2f}  {hold_s:>8}"
+        )
+    return "\n".join(lines)
+
+
 def format_table(rows: list[dict]) -> str:
     """Render summary dicts as a fixed-width comparison table."""
     cols = [

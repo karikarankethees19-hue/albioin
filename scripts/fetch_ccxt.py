@@ -12,10 +12,21 @@ It paginates fetch_ohlcv to pull long histories and writes canonical parquet
 files that the engine reads unchanged. Same cache format as the MCP daily path,
 so results are directly comparable.
 
+For the 3-year 5-minute test, use an exchange that truly paginates deep history.
+**Binance** does (full history via `since`); **Kraken caps intraday at ~720 most
+recent bars** regardless of `since`, so it CANNOT supply 3 years of 5m — use it
+only for daily. If Binance is geo-blocked where you are, try `binanceus`,
+`bybit`, `okx`, or `kucoin`.
+
 Examples
 --------
-  python scripts/fetch_ccxt.py --exchange kraken --symbol BTC/USD  --timeframe 1d  --since 2018-01-01
-  python scripts/fetch_ccxt.py --exchange binance --symbol BTC/USDT --timeframe 5m  --since 2025-07-01
+  # 3 years of 5-minute BTC for the intraday verification (this is the one):
+  python scripts/fetch_ccxt.py --exchange binance --symbol BTC/USDT --timeframe 5m --since 2022-07-01
+  python scripts/fetch_ccxt.py --exchange binance --symbol ETH/USDT --timeframe 5m --since 2022-07-01
+  # then:  python analysis_intraday.py --symbol BTCUSD
+
+  # daily is fine on Kraken:
+  python scripts/fetch_ccxt.py --exchange kraken --symbol BTC/USD --timeframe 1d --since 2018-01-01
 """
 from __future__ import annotations
 
@@ -75,7 +86,14 @@ def main() -> None:
     key = _cache_key(args.symbol, args.timeframe)
     out = CACHE_DIR / f"{key}.parquet"
     df.to_parquet(out, index=False)
-    print(f"wrote {len(df)} rows to {out}  ({df.timestamp.min().date()} -> {df.timestamp.max().date()})")
+    span_days = (df["timestamp"].max() - df["timestamp"].min()).days
+    print(f"wrote {len(df)} rows to {out}  ({df.timestamp.min().date()} -> {df.timestamp.max().date()}, {span_days} days)")
+    if args.timeframe.endswith(("m", "min")) and span_days < 3 * 365 - 5:
+        print(
+            f"  ⚠ only {span_days} days of intraday history — the 3-year rolling test wants ~1095.\n"
+            f"    {args.exchange} may cap intraday history (Kraken does at ~720 bars). "
+            f"Try --exchange binance."
+        )
 
 
 if __name__ == "__main__":

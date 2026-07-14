@@ -62,6 +62,52 @@ def per_year(
     return pd.DataFrame(rows).set_index("year")
 
 
+def rolling(
+    df: pd.DataFrame,
+    desired: pd.Series,
+    cost,
+    window_days: int,
+    step_days: int,
+    execution: str = "next_open",
+) -> pd.DataFrame:
+    """Roll a fixed-length window across the data and backtest each placement.
+
+    Works on any timeframe (this is the intraday path). Indicators are warmed on
+    the full ``df``; each window only restricts the reporting range. Returns one
+    row per window start with strategy vs buy-and-hold and fee autopsy fields.
+    """
+    ts = pd.to_datetime(df["timestamp"])
+    t0, t1 = ts.iloc[0], ts.iloc[-1]
+    wlen = pd.Timedelta(days=window_days)
+    step = pd.Timedelta(days=step_days)
+
+    rows = []
+    start = t0
+    while start + wlen <= t1 + pd.Timedelta(days=1):
+        end = start + wlen
+        res = eng.run(df, desired, cost, execution=execution,
+                      start=str(start), end=str(end))
+        if res.meta["bars"] >= 50:
+            s = metrics.summarize(res)
+            a = metrics.autopsy(res)
+            rows.append(
+                {
+                    "win_start": start.date(),
+                    "win_end": end.date(),
+                    "strat_ret": s["total_return"],
+                    "gross_ret": a["gross_return"],
+                    "bh_ret": s["bh_total_return"],
+                    "excess": s["total_return"] - s["bh_total_return"],
+                    "cost_share_of_gross": a["cost_share_of_gross"],
+                    "maxDD": s["max_drawdown"],
+                    "trades": s["trades"],
+                    "trades_per_day": a["trades_per_day"],
+                }
+            )
+        start = start + step
+    return pd.DataFrame(rows)
+
+
 def format_year_table(dfy: pd.DataFrame, title: str) -> str:
     lines = [title, "-" * len(title), f"{'year':>6}  {'strat':>9}  {'buy&hold':>9}  {'excess':>9}  {'maxDD':>8}  {'trades':>6}"]
     for y, r in dfy.iterrows():
