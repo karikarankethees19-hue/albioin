@@ -10,5 +10,7 @@ from .base import Strategy, register, get, all_strategies
 # Import modules so their @register decorators run.
 from . import ema_cross  # noqa: F401
 from . import rsi  # noqa: F401
+from . import supertrend  # noqa: F401
+from . import intraday  # noqa: F401  (vwap_bounce, orb)
 
 __all__ = ["Strategy", "register", "get", "all_strategies"]

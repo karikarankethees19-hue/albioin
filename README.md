@@ -134,6 +134,42 @@ equity accounting. Small residuals in return/trade-count/PF come from two
 
 Equity curves in `reports/`.
 
+### Regime dependence — per-year windows (`python analysis.py`)
+
+The single multi-year headline above is *misleading*, and the per-year
+breakdown proves it. Same strategy, same fees, one calendar year at a time
+(excess = strategy − buy-and-hold, next-open fills, retail fees):
+
+**EMA 9/21 on BTC — "beats buy-and-hold" is really "avoids crashes":**
+
+| year | strat | buy&hold | excess |
+|---|--:|--:|--:|
+| 2021 (bull) | +128% | +63% | **+65%** |
+| 2022 (bear) | −53% | −64% | +11% |
+| 2023 (bull) | +100% | +155% | **−55%** |
+| 2024 (bull) | +83% | +119% | **−36%** |
+| 2026 (down) | −1% | −29% | +28% |
+
+EMA *lagged* buy-and-hold in the strong bull years (2023, 2024) and only "won"
+by losing less in down/sideways years (2022, 2026). Its edge is **downside
+protection, not trend capture** — insurance, not alpha. Beat B&H in 6/8 years
+but median excess only +7.4%, and the crypto "outperformance" cited earlier was
+an artefact of *which* years the 3-year window happened to span.
+
+**RSI 30/70 — destroyed, exactly as predicted:** beat buy-and-hold in **2/8
+years on BTC (median excess −82%)** and 2/8 on ETH (−22%). It trades once or
+twice a year and sits out entire bull runs (2020: +123% vs B&H +301%, a −178pp
+miss). The mean-reversion meat grinder, confirmed.
+
+**Supertrend:** mediocre and regime-dependent — 3/8 years on BTC (median −18%),
+5/8 on ETH (+12.5%), carried by single outliers (ETH 2021 +139pp).
+
+**FX (EURUSD):** all three beat a flat/declining buy-and-hold in most years, but
+absolute returns are trivial (a few %/year) — a GIC still wins. Consistent with
+Test 1.
+
+See `reports/regime_heatmap.png` for the full grid.
+
 ---
 
 ## Adding a strategy (~10 lines)
@@ -151,7 +187,21 @@ class Supertrend(Strategy):
 ```
 
 Import it in `gsf/strategies/__init__.py` and it's runnable via
-`--strategy supertrend`. Currently implemented: `ema_cross`, `rsi`.
+`--strategy supertrend`.
+
+Currently implemented:
+
+| strategy | timeframe | notes |
+|---|---|---|
+| `ema_cross` | any | 9/21 EMA crossover, long-only or long/short |
+| `rsi` | any | Wilder RSI, buy < 30 / sell > 70, stateful hold between bands |
+| `supertrend` | any | ATR-banded (10/3), causal band carry-forward |
+| `vwap_bounce` | **intraday only** | long while above session VWAP; needs sub-daily bars |
+| `orb` | **intraday only** | first-15-min opening-range breakout, flat overnight |
+
+`vwap_bounce` and `orb` are session-aware and raise on daily data — populate a
+5-minute cache with `scripts/fetch_ccxt.py` (locally, open network) and they run
+unchanged.
 
 ---
 
@@ -164,11 +214,13 @@ gsf/
   engine.py       # vectorized, look-ahead-free backtest + trade extraction
   metrics.py      # return, CAGR, win rate, PF, max DD, comparison table
   report.py       # equity-curve PNGs
-  strategies/     # registry + ema_cross, rsi
+  windows.py      # per-year / rolling regime analysis
+  strategies/     # registry + ema_cross, rsi, supertrend, intraday (vwap, orb)
 run.py            # CLI (single run, or --suite)
 suite.py          # Test 1 reproduction + BTC/ETH cross-check
+analysis.py       # per-year regime grid + heatmap
 scripts/          # fetch_ccxt.py (local), mcp_to_cache.py (sandbox)
-tests/            # no-look-ahead + cost-accounting tests
+tests/            # no-look-ahead, cost-accounting, strategy + session tests
 data/cache/       # committed daily parquet
 reports/          # committed equity PNGs
 ```
@@ -177,7 +229,11 @@ reports/          # committed equity PNGs
 
 1. **5-minute EMA 9/21 on BTC** with fee tiers — run `fetch_ccxt.py --timeframe 5m`
    locally, then confirm/deny the fee-shredder prediction. *(blocked in sandbox)*
-2. RSI 30/70 sweep on daily + intraday (module already implemented).
-3. Supertrend, VWAP bounce, ORB (intraday — need local 5-min data).
-4. Rolling multi-window runs to expose regime dependence explicitly.
-5. Paper-trade any survivor forward one month before touching the $100 CAD.
+2. Run **`vwap_bounce` and `orb`** on that same local 5-min cache (modules ready;
+   they raise on daily data by design).
+3. ~~RSI 30/70~~ ✅ done on daily — destroyed on trending crypto (2/8 years).
+4. ~~Supertrend~~ ✅ done on daily — mediocre, regime-dependent.
+5. ~~Rolling multi-window regime analysis~~ ✅ done — see `analysis.py` / heatmap.
+6. Paper-trade any survivor forward one month before touching the $100 CAD.
+   (On the daily evidence so far, there is no survivor worth live capital: EMA's
+   only edge is crash-avoidance, and it lags in bull years.)

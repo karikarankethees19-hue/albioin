@@ -31,11 +31,9 @@ def run_one(args) -> dict:
     df = data.load_ohlcv(args.symbol, args.timeframe)
     strat_cls = get_strategy(args.strategy)
 
-    kwargs = {}
+    kwargs = {"allow_short": args.allow_short}
     if args.strategy == "ema_cross":
-        kwargs = dict(fast=args.fast, slow=args.slow, allow_short=args.allow_short)
-    elif args.strategy == "rsi":
-        kwargs = dict(allow_short=args.allow_short)
+        kwargs.update(fast=args.fast, slow=args.slow)
     strat = strat_cls(**kwargs)
 
     desired = strat.positions(df)
